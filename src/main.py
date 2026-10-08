@@ -1,5 +1,6 @@
 import os
 import shutil
+import sys
 from helpers import extract_title, markdown_to_html_node
 
 def copy_directory(source, destination):
@@ -23,7 +24,7 @@ def copy_directory(source, destination):
         else:
             copy_directory(source_path, destination_path)
 
-def generate_page(from_path, template_path, dest_path):
+def generate_page(from_path, template_path, dest_path, basepath="/"):
     print(f"Generating page from {from_path} to {dest_path} using {template_path}")
     with open(from_path, encoding="utf-8") as markdown_file:
         markdown = markdown_file.read()
@@ -33,31 +34,35 @@ def generate_page(from_path, template_path, dest_path):
     html = markdown_to_html_node(markdown).to_html()
     title = extract_title(markdown)
     page = template.replace("{{ Title }}", title).replace("{{ Content }}", html)
+    page = page.replace('href="/', f'href="{basepath}')
+    page = page.replace('src="/', f'src="{basepath}')
     os.makedirs(os.path.dirname(os.path.abspath(dest_path)), exist_ok=True)
     with open(dest_path, "w", encoding="utf-8") as output_file:
         output_file.write(page)
 
-def generate_pages_recursive(dir_path_content, template_path, dest_dir_path):
+def generate_pages_recursive(dir_path_content, template_path, dest_dir_path, basepath="/"):
     os.makedirs(dest_dir_path, exist_ok=True)
     for name in os.listdir(dir_path_content):
         source_path = os.path.join(dir_path_content, name)
         destination_path = os.path.join(dest_dir_path, name)
         if os.path.isdir(source_path):
-            generate_pages_recursive(source_path, template_path, destination_path)
+            generate_pages_recursive(source_path, template_path, destination_path, basepath)
         elif os.path.isfile(source_path) and name.lower().endswith(".md"):
             destination_path = os.path.join(dest_dir_path, os.path.splitext(name)[0] + ".html")
-            generate_page(source_path, template_path, destination_path)
+            generate_page(source_path, template_path, destination_path, basepath)
 
 def main():
+    basepath = sys.argv[1] if len(sys.argv) > 1 else "/"
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     copy_directory(
         os.path.join(project_root, "static"),
-        os.path.join(project_root, "public"),
+        os.path.join(project_root, "docs"),
     )
     generate_pages_recursive(
         os.path.join(project_root, "content"),
         os.path.join(project_root, "template.html"),
-        os.path.join(project_root, "public"),
+        os.path.join(project_root, "docs"),
+        basepath,
     )
 
 if __name__ == "__main__":

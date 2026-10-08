@@ -199,6 +199,33 @@ class TestGeneratePage(unittest.TestCase):
             )
             self.assertIn(f"Generating page from {source} to {destination} using {template}", output.getvalue())
 
+    def test_basepath_rewrites_only_root_relative_urls(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "index.md"
+            template = root / "template.html"
+            destination = root / "index.html"
+            source.write_text(
+                "# Hello\n\n[Home](/) [Post](/blog/post) [External](https://example.com) "
+                "[Relative](other.html) ![Image](/images/test.png)",
+                encoding="utf-8",
+            )
+            template.write_text(
+                '<title>{{ Title }}</title><link href="/index.css">{{ Content }}',
+                encoding="utf-8",
+            )
+            for basepath in ["/", "/static-site-generator/"]:
+                with self.subTest(basepath=basepath):
+                    with contextlib.redirect_stdout(io.StringIO()):
+                        generate_page(source, template, destination, basepath)
+                    html = destination.read_text(encoding="utf-8")
+                    self.assertIn(f'href="{basepath}"', html)
+                    self.assertIn(f'href="{basepath}blog/post"', html)
+                    self.assertIn(f'href="{basepath}index.css"', html)
+                    self.assertIn(f'src="{basepath}images/test.png"', html)
+                    self.assertIn('href="https://example.com"', html)
+                    self.assertIn('href="other.html"', html)
+
     def test_missing_title_does_not_write_page(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -251,6 +278,21 @@ class TestGeneratePagesRecursive(unittest.TestCase):
             self.assertFalse((destination / "ignore.txt").exists())
             self.assertTrue((destination / "empty").is_dir())
             self.assertEqual(asset.read_text(encoding="utf-8"), "body { color: black; }")
+
+    def test_basepath_passed_to_nested_pages(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            content = root / "content"
+            source = content / "blog" / "post" / "index.md"
+            source.parent.mkdir(parents=True)
+            source.write_text("# Post\n\n[Home](/)", encoding="utf-8")
+            template = root / "template.html"
+            template.write_text("{{ Title }}{{ Content }}", encoding="utf-8")
+            destination = root / "docs"
+            with contextlib.redirect_stdout(io.StringIO()):
+                generate_pages_recursive(content, template, destination, "/static-site-generator/")
+            html = (destination / "blog" / "post" / "index.html").read_text(encoding="utf-8")
+            self.assertIn('href="/static-site-generator/"', html)
 
     def test_empty_content_directory(self):
         with tempfile.TemporaryDirectory() as temporary:
